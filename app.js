@@ -8,6 +8,7 @@ const el = {
   clearUrlBtn: document.getElementById("clearUrlBtn"),
   calBadge: document.getElementById("calBadge"),
   durationMin: document.getElementById("durationMin"),
+  startOffsetDays: document.getElementById("startOffsetDays"),
   spanDays: document.getElementById("spanDays"),
   maxOptions: document.getElementById("maxOptions"),
   dayStart: document.getElementById("dayStart"),
@@ -31,7 +32,7 @@ function init() {
   el.copyBtn.addEventListener("click", onCopy);
 
   const settingInputs = [
-    el.durationMin, el.spanDays, el.maxOptions,
+    el.durationMin, el.startOffsetDays, el.spanDays, el.maxOptions,
     el.dayStart, el.dayEnd, el.slotStep, el.leadHours, el.weekdaysOnly,
   ];
   for (const input of settingInputs) {
@@ -43,6 +44,7 @@ function applySavedSettings() {
   const defaults = {
     icalUrl: "",
     durationMin: "60",
+    startOffsetDays: "0",
     spanDays: "7",
     maxOptions: "5",
     dayStart: "09:00",
@@ -59,6 +61,7 @@ function applySavedSettings() {
   }
   el.icalUrl.value = saved.icalUrl ?? defaults.icalUrl;
   el.durationMin.value = String(saved.durationMin ?? defaults.durationMin);
+  el.startOffsetDays.value = String(saved.startOffsetDays ?? defaults.startOffsetDays);
   el.spanDays.value = String(saved.spanDays ?? defaults.spanDays);
   el.maxOptions.value = String(saved.maxOptions ?? defaults.maxOptions);
   el.dayStart.value = saved.dayStart ?? defaults.dayStart;
@@ -73,6 +76,7 @@ function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     icalUrl: el.icalUrl.value.trim(),
     durationMin: Number(el.durationMin.value),
+    startOffsetDays: Number(el.startOffsetDays.value),
     spanDays: Number(el.spanDays.value),
     maxOptions: Number(el.maxOptions.value),
     dayStart: el.dayStart.value,
@@ -301,6 +305,7 @@ function buildIcalUrlCandidates(inputUrl) {
 function readSettings() {
   return {
     durationMin: Number(el.durationMin.value),
+    startOffsetDays: Number(el.startOffsetDays.value),
     spanDays: Number(el.spanDays.value),
     maxOptions: Number(el.maxOptions.value),
     dayStart: el.dayStart.value,
@@ -318,6 +323,9 @@ function validateSettings(settings) {
   if (!Number.isFinite(settings.spanDays) || settings.spanDays < 1) {
     throw new Error("Look ahead must be at least 1 day.");
   }
+  if (!Number.isFinite(settings.startOffsetDays) || settings.startOffsetDays < 0) {
+    throw new Error("Start in (days) must be 0 or more.");
+  }
   if (!Number.isFinite(settings.maxOptions) || settings.maxOptions < 1) {
     throw new Error("Number of options must be at least 1.");
   }
@@ -334,6 +342,7 @@ function validateSettings(settings) {
 
 function buildRange(settings) {
   const start = new Date();
+  start.setDate(start.getDate() + settings.startOffsetDays);
   const end = new Date(start);
   end.setDate(end.getDate() + settings.spanDays);
   return { start, end };
