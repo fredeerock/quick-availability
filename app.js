@@ -401,7 +401,6 @@ function toTimeBucket(date) {
 }
 
 function buildEmailOutput(slots, settings) {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const durationMs = settings.durationMin * 60 * 1000;
   const dayFmt  = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -411,8 +410,7 @@ function buildEmailOutput(slots, settings) {
     return `${i + 1}) ${dayFmt.format(slot)}: ${timeFmt.format(slot)} - ${timeFmt.format(end)}`;
   });
 
-  const intro = `Here are ${slots.length} options for a ${settings.durationMin}-minute meeting in the next ${settings.spanDays} day(s) (${timeZone}):`;
-  return { lines, text: `${intro}\n\n${lines.join("\n")}` };
+  return { lines, text: lines.join("\n") };
 }
 
 async function onCopy() {
