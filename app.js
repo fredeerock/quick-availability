@@ -1,13 +1,12 @@
-const STORAGE_KEY = "availability-composer-settings-v3";
-const GOOGLE_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
-const GOOGLE_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+const STORAGE_KEY = "availability-composer-settings-v4";
+// Free CORS proxy — no account required. Only the iCal URL is sent through it.
+const CORS_PROXY = "https://corsproxy.io/?url=";
 
 const el = {
-  googleClientId: document.getElementById("googleClientId"),
-  googleSignInBtn: document.getElementById("googleSignInBtn"),
-  googleSignOutBtn: document.getElementById("googleSignOutBtn"),
-  authBadge: document.getElementById("authBadge"),
-  redirectUriText: document.getElementById("redirectUriText"),
+  icalUrl: document.getElementById("icalUrl"),
+  saveUrlBtn: document.getElementById("saveUrlBtn"),
+  clearUrlBtn: document.getElementById("clearUrlBtn"),
+  calBadge: document.getElementById("calBadge"),
   durationMin: document.getElementById("durationMin"),
   spanDays: document.getElementById("spanDays"),
   maxOptions: document.getElementById("maxOptions"),
@@ -23,27 +22,12 @@ const el = {
   copyBtn: document.getElementById("copyBtn"),
 };
 
-const pageUrl = new URL(window.location.href);
-pageUrl.hash = "";
-el.redirectUriText.textContent = pageUrl.origin;
-
-let googleTokenClient = null;
-let googleTokenClientId = "";
-let googleAccessToken = "";
-
 init();
 
 function init() {
   applySavedSettings();
-  el.googleClientId.addEventListener("change", () => {
-    saveSettings();
-    googleTokenClient = null;
-    googleTokenClientId = "";
-    googleAccessToken = "";
-    updateAuthUi();
-  });
-  el.googleSignInBtn.addEventListener("click", onGoogleSignIn);
-  el.googleSignOutBtn.addEventListener("click", onGoogleSignOut);
+  el.saveUrlBtn.addEventListener("click", onSaveUrl);
+  el.clearUrlBtn.addEventListener("click", onClearUrl);
   el.generateBtn.addEventListener("click", onGenerate);
   el.copyBtn.addEventListener("click", onCopy);
 
@@ -54,13 +38,11 @@ function init() {
   for (const input of settingInputs) {
     input.addEventListener("change", saveSettings);
   }
-
-  updateAuthUi();
 }
 
 function applySavedSettings() {
   const defaults = {
-    googleClientId: "",
+    icalUrl: "",
     durationMin: "60",
     spanDays: "7",
     maxOptions: "5",
@@ -76,7 +58,7 @@ function applySavedSettings() {
   } catch {
     saved = {};
   }
-  el.googleClientId.value = saved.googleClientId ?? defaults.googleClientId;
+  el.icalUrl.value = saved.icalUrl ?? defaults.icalUrl;
   el.durationMin.value = String(saved.durationMin ?? defaults.durationMin);
   el.spanDays.value = String(saved.spanDays ?? defaults.spanDays);
   el.maxOptions.value = String(saved.maxOptions ?? defaults.maxOptions);
@@ -85,11 +67,12 @@ function applySavedSettings() {
   el.slotStep.value = String(saved.slotStep ?? defaults.slotStep);
   el.leadHours.value = String(saved.leadHours ?? defaults.leadHours);
   el.weekdaysOnly.checked = saved.weekdaysOnly ?? defaults.weekdaysOnly;
+  updateCalBadge();
 }
 
 function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    googleClientId: el.googleClientId.value.trim(),
+    icalUrl: el.icalUrl.value.trim(),
     durationMin: Number(el.durationMin.value),
     spanDays: Number(el.spanDays.value),
     maxOptions: Number(el.maxOptions.value),
@@ -101,88 +84,39 @@ function saveSettings() {
   }));
 }
 
+function onSaveUrl() {
+  const url = el.icalUrl.value.trim();
+  if (!url) {
+    updateStatus("Paste your secret iCal URL first.", "warn");
+    return;
+  }
+  if (!url.includes("calendar.google.com") && !url.endsWith(".ics")) {
+    updateStatus("That doesn't look like a Google Calendar iCal URL. Check and try again.", "warn");
+    return;
+  }
+  saveSettings();
+  updateCalBadge();
+  updateStatus("Calendar link saved. Click Find my times.", "ok");
+}
+
+function onClearUrl() {
+  el.icalUrl.value = "";
+  saveSettings();
+  updateCalBadge();
+  updateStatus("Calendar link cleared.");
+}
+
+function updateCalBadge() {
+  const hasUrl = Boolean(el.icalUrl.value.trim());
+  el.calBadge.textContent = hasUrl ? "Link saved" : "No link saved";
+  el.calBadge.classList.toggle("ok", hasUrl);
+  el.generateBtn.disabled = !hasUrl;
+}
+
 function updateStatus(text, mode = "") {
   el.statusText.textContent = text;
   el.statusText.classList.remove("ok", "warn");
   if (mode) el.statusText.classList.add(mode);
-}
-
-function updateAuthUi() {
-  const hasClientId = Boolean(el.googleClientId.value.trim());
-  const signedIn = Boolean(googleAccessToken);
-
-  el.googleSignInBtn.disabled = !hasClientId || signedIn;
-  el.googleSignOutBtn.disabled = !signedIn;
-  el.generateBtn.disabled = !signedIn;
-
-  if (signedIn) {
-    el.authBadge.textContent = "Google connected";
-    el.authBadge.classList.add("ok");
-    updateStatus("Ready. Click Find my times.", "ok");
-  } else if (!hasClientId) {
-    el.authBadge.textContent = "No client ID";
-    el.authBadge.classList.remove("ok");
-    updateStatus("Paste your Google OAuth Client ID, then sign in.", "warn");
-  } else {
-    el.authBadge.textContent = "Not signed in";
-    el.authBadge.classList.remove("ok");
-    updateStatus("Sign in with Google to connect your calendar.");
-  }
-}
-
-async function onGoogleSignIn() {
-  try {
-    saveSettings();
-    await requestGoogleAccessToken("consent");
-    updateAuthUi();
-  } catch (error) {
-    updateStatus(formatError(error), "warn");
-  }
-}
-
-function onGoogleSignOut() {
-  if (googleAccessToken && window.google?.accounts?.oauth2?.revoke) {
-    window.google.accounts.oauth2.revoke(googleAccessToken, () => {});
-  }
-  googleAccessToken = "";
-  googleTokenClient = null;
-  googleTokenClientId = "";
-  updateAuthUi();
-}
-
-async function requestGoogleAccessToken(prompt = "") {
-  const clientId = el.googleClientId.value.trim();
-  if (!clientId) throw new Error("Missing Google OAuth client ID.");
-  if (!window.google?.accounts?.oauth2) {
-    throw new Error("Google Identity script did not load. Check your network or content blocker.");
-  }
-
-  if (!googleTokenClient || googleTokenClientId !== clientId) {
-    googleTokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: GOOGLE_SCOPE,
-      callback: () => {},
-      error_callback: () => {},
-    });
-    googleTokenClientId = clientId;
-  }
-
-  const tokenResponse = await new Promise((resolve, reject) => {
-    googleTokenClient.callback = (resp) => {
-      if (resp?.error) {
-        reject(new Error(resp.error_description || resp.error));
-        return;
-      }
-      resolve(resp);
-    };
-    googleTokenClient.error_callback = (resp) => {
-      reject(new Error(resp?.message || "Google token request failed"));
-    };
-    googleTokenClient.requestAccessToken({ prompt });
-  });
-
-  if (!tokenResponse?.access_token) throw new Error("Google did not return an access token.");
-  googleAccessToken = tokenResponse.access_token;
 }
 
 async function onGenerate() {
@@ -195,21 +129,16 @@ async function onGenerate() {
     validateSettings(settings);
     saveSettings();
 
-    updateStatus("Checking your calendar...");
+    const icalUrl = el.icalUrl.value.trim();
+    if (!icalUrl) throw new Error("Paste and save your Google Calendar secret iCal URL first.");
 
+    updateStatus("Fetching your calendar...");
+
+    const icsText = await fetchIcalViaProxy(icalUrl);
     const { start, end } = buildRange(settings);
+    const busyBlocks = parseIcsBusyBlocks(icsText, start, end);
 
-    let busyBlocks;
-    try {
-      busyBlocks = await fetchGoogleBusyBlocks(googleAccessToken, start, end);
-    } catch (error) {
-      if (String(error.message || "").includes("401")) {
-        await requestGoogleAccessToken("");
-        busyBlocks = await fetchGoogleBusyBlocks(googleAccessToken, start, end);
-      } else {
-        throw error;
-      }
-    }
+    updateStatus("Building suggestions...");
 
     const candidates = buildCandidateSlots(start, end, busyBlocks, settings);
     if (candidates.length === 0) {
@@ -226,6 +155,19 @@ async function onGenerate() {
   } catch (error) {
     updateStatus(formatError(error), "warn");
   }
+}
+
+async function fetchIcalViaProxy(icalUrl) {
+  const proxyUrl = CORS_PROXY + encodeURIComponent(icalUrl);
+  const response = await fetch(proxyUrl);
+  if (!response.ok) {
+    throw new Error(`Could not fetch calendar (${response.status}). Check your iCal URL is correct and public.`);
+  }
+  const text = await response.text();
+  if (!text.includes("BEGIN:VCALENDAR")) {
+    throw new Error("The URL did not return a valid calendar. Make sure you copied the secret iCal address from Google Calendar.");
+  }
+  return text;
 }
 
 function readSettings() {
@@ -269,55 +211,93 @@ function buildRange(settings) {
   return { start, end };
 }
 
-async function fetchGoogleBusyBlocks(token, start, end) {
-  let pageToken = "";
+// ---------- iCal parser ----------
+
+function parseIcsBusyBlocks(icsText, rangeStart, rangeEnd) {
+  const unfolded = icsText.replace(/\r?\n[ \t]/g, "");
+  const lines = unfolded.split(/\r?\n/);
   const blocks = [];
 
-  while (true) {
-    const params = new URLSearchParams({
-      timeMin: start.toISOString(),
-      timeMax: end.toISOString(),
-      singleEvents: "true",
-      orderBy: "startTime",
-      maxResults: "2500",
-    });
-    if (pageToken) params.set("pageToken", pageToken);
+  let inEvent = false;
+  let event = {};
 
-    const response = await fetch(`${GOOGLE_EVENTS_URL}?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
 
-    if (!response.ok) {
-      const bodyText = await response.text();
-      throw new Error(`Google Calendar request failed (${response.status}): ${bodyText}`);
+    if (line === "BEGIN:VEVENT") { inEvent = true; event = {}; continue; }
+
+    if (line === "END:VEVENT") {
+      if (inEvent) {
+        const block = eventToBusyBlock(event);
+        if (block && block.end > rangeStart && block.start < rangeEnd) {
+          blocks.push(block);
+        }
+      }
+      inEvent = false;
+      event = {};
+      continue;
     }
 
-    const payload = await response.json();
+    if (!inEvent) continue;
 
-    for (const event of payload.items || []) {
-      if (event.status === "cancelled" || event.transparency === "transparent") continue;
-      const startDate = parseGoogleDate(event.start);
-      const endDate = parseGoogleDate(event.end);
-      if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) continue;
-      if (!(endDate instanceof Date) || Number.isNaN(endDate.getTime())) continue;
-      if (endDate <= startDate) continue;
-      blocks.push({ start: startDate, end: endDate });
+    const sep = line.indexOf(":");
+    if (sep === -1) continue;
+
+    const keyPart = line.slice(0, sep);
+    const value = line.slice(sep + 1);
+    const [nameRaw, ...paramParts] = keyPart.split(";");
+    const name = nameRaw.toUpperCase();
+    const params = {};
+    for (const part of paramParts) {
+      const [k, v] = part.split("=");
+      if (k && v) params[k.toUpperCase()] = v;
     }
 
-    pageToken = payload.nextPageToken || "";
-    if (!pageToken) break;
+    if (name === "DTSTART") event.dtStart = { value, params };
+    else if (name === "DTEND") event.dtEnd = { value, params };
+    else if (name === "TRANSP") event.transparency = value.toUpperCase();
+    else if (name === "STATUS") event.status = value.toUpperCase();
   }
 
   blocks.sort((a, b) => a.start - b.start);
   return mergeOverlaps(blocks);
 }
 
-function parseGoogleDate(node) {
-  if (!node) return null;
-  if (node.dateTime) return new Date(node.dateTime);
-  if (node.date) return new Date(`${node.date}T00:00:00`);
-  return null;
+function eventToBusyBlock(event) {
+  if (!event.dtStart) return null;
+  if (event.status === "CANCELLED") return null;
+  if (event.transparency === "TRANSPARENT") return null;
+
+  const start = parseIcsDate(event.dtStart.value, event.dtStart.params);
+  let end = event.dtEnd ? parseIcsDate(event.dtEnd.value, event.dtEnd.params) : null;
+
+  if (!start || Number.isNaN(start.getTime())) return null;
+  if (!end || Number.isNaN(end.getTime())) end = new Date(start.getTime() + 30 * 60 * 1000);
+  if (end <= start) return null;
+
+  return { start, end };
 }
+
+function parseIcsDate(value, params = {}) {
+  const s = String(value || "").trim();
+  if (params.VALUE === "DATE" || /^\d{8}$/.test(s)) {
+    return new Date(Number(s.slice(0,4)), Number(s.slice(4,6))-1, Number(s.slice(6,8)));
+  }
+  const utc = s.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
+  if (utc) {
+    const [,y,mo,d,h,mi,sec] = utc;
+    return new Date(Date.UTC(+y,+mo-1,+d,+h,+mi,+sec));
+  }
+  const local = s.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/);
+  if (local) {
+    const [,y,mo,d,h,mi,sec] = local;
+    return new Date(+y,+mo-1,+d,+h,+mi,+sec);
+  }
+  return new Date(s);
+}
+
+// ---------- slot building ----------
 
 function mergeOverlaps(items) {
   if (items.length < 2) return items;
@@ -325,11 +305,8 @@ function mergeOverlaps(items) {
   for (let i = 1; i < items.length; i++) {
     const prev = merged[merged.length - 1];
     const cur = items[i];
-    if (cur.start <= prev.end) {
-      if (cur.end > prev.end) prev.end = cur.end;
-    } else {
-      merged.push(cur);
-    }
+    if (cur.start <= prev.end) { if (cur.end > prev.end) prev.end = cur.end; }
+    else merged.push(cur);
   }
   return merged;
 }
@@ -354,7 +331,6 @@ function buildCandidateSlots(rangeStart, rangeEnd, busyBlocks, settings) {
       windowEnd.setMinutes(dayEndMin, 0, 0);
 
       let slot = ceilToStep(new Date(Math.max(windowStart.getTime(), earliest.getTime())), stepMs);
-
       while (slot < windowEnd) {
         const slotEnd = new Date(slot.getTime() + durationMs);
         if (slotEnd > windowEnd || slotEnd > rangeEnd) break;
@@ -394,28 +370,24 @@ function chooseSpreadOptions(candidates, desiredCount, rangeStart, rangeEnd) {
 
     for (const slot of candidates) {
       if (selected.some((p) => p.getTime() === slot.getTime())) continue;
-
       const soonness = 1 - (slot.getTime() - rangeStart.getTime()) / spanMs;
       let nearestMs = Infinity;
-      for (const picked of selected) {
-        const dist = Math.abs(slot.getTime() - picked.getTime());
-        if (dist < nearestMs) nearestMs = dist;
+      for (const p of selected) {
+        const d = Math.abs(slot.getTime() - p.getTime());
+        if (d < nearestMs) nearestMs = d;
       }
-      const distanceScore = selected.length === 0 ? 0.7 : Math.min(1, nearestMs / spanMs);
-      const dayBonus = seenDay.has(toDayKey(slot)) ? 0 : 0.24;
-      const bucketBonus = seenBucket.has(toTimeBucket(slot)) ? 0 : 0.18;
-      const closePenalty = nearestMs < 2 * 60 * 60 * 1000 ? 0.24 : 0;
-      const score = 0.35 * soonness + 0.45 * distanceScore + dayBonus + bucketBonus - closePenalty;
-
+      const distScore = selected.length === 0 ? 0.7 : Math.min(1, nearestMs / spanMs);
+      const dayBonus   = seenDay.has(toDayKey(slot)) ? 0 : 0.24;
+      const buckBonus  = seenBucket.has(toTimeBucket(slot)) ? 0 : 0.18;
+      const penalty    = nearestMs < 2 * 60 * 60 * 1000 ? 0.24 : 0;
+      const score = 0.35 * soonness + 0.45 * distScore + dayBonus + buckBonus - penalty;
       if (score > bestScore) { bestScore = score; bestCandidate = slot; }
     }
-
     if (!bestCandidate) break;
     selected.push(bestCandidate);
     seenDay.add(toDayKey(bestCandidate));
     seenBucket.add(toTimeBucket(bestCandidate));
   }
-
   return selected.sort((a, b) => a - b);
 }
 
@@ -434,7 +406,7 @@ function toTimeBucket(date) {
 function buildEmailOutput(slots, settings) {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const durationMs = settings.durationMin * 60 * 1000;
-  const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const dayFmt  = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
   const lines = slots.map((slot, i) => {
@@ -473,5 +445,5 @@ function timeToMinutes(hhmm) {
 function formatError(error) {
   if (!error) return "Something went wrong.";
   if (typeof error === "string") return error;
-  return error.errorMessage || error.message || "Something went wrong.";
+  return error.message || "Something went wrong.";
 }

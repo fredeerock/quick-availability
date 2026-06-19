@@ -6,7 +6,7 @@
     <title>Availability Composer</title>
     <meta
       name="description"
-      content="Generate copy-ready meeting availability options from your Google Calendar."
+      content="Generate copy-ready meeting availability from your Google Calendar. No sign-in required."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
   </head>
   <body>
     <div class="bg-orb orb-a"></div>
@@ -26,35 +26,39 @@
         <p class="kicker">Google Calendar -> Ready-to-send email options</p>
         <h1>Availability Composer</h1>
         <p class="lede">
-          Pull your calendar, choose meeting length and date span, then copy a polished list
-          of suggested times.
+          Paste your Google Calendar secret link, choose meeting length and date span, then
+          copy a polished list of suggested times. No sign-in or cloud account needed.
         </p>
       </section>
 
-      <section class="card controls" aria-label="Availability settings">
+      <section class="card controls" aria-label="Calendar source">
         <div class="section-title">
-          <h2>1) Connect calendar source</h2>
-          <span id="authBadge" class="badge">Not signed in</span>
+          <h2>1) Your Google Calendar link</h2>
+          <span id="calBadge" class="badge">No link saved</span>
         </div>
 
         <label>
-          Google OAuth Client ID
+          Secret iCal address
           <input
-            id="googleClientId"
-            type="text"
-            placeholder="Paste Google Web OAuth client ID"
+            id="icalUrl"
+            type="url"
+            placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
+            spellcheck="false"
           />
         </label>
 
-        <div class="row">
-          <button id="googleSignInBtn" class="btn primary">Sign in with Google</button>
-          <button id="googleSignOutBtn" class="btn ghost" disabled>Disconnect Google</button>
-        </div>
-
         <p class="hint">
-          Add this URL as an authorized JavaScript origin in Google Cloud Console:
-          <span id="redirectUriText" class="mono"></span>
+          In Google Calendar: <strong>Settings (gear icon) &rarr; Settings &rarr; pick your
+          calendar on the left sidebar &rarr; scroll to &ldquo;Secret address in iCal
+          format&rdquo; &rarr; copy that URL and paste it above.</strong><br />
+          The link is fetched live each time you generate, so it always reflects your current
+          calendar.
         </p>
+
+        <div class="row">
+          <button id="saveUrlBtn" class="btn primary">Save link</button>
+          <button id="clearUrlBtn" class="btn ghost">Clear</button>
+        </div>
       </section>
 
       <section class="card controls" aria-label="Meeting option generator">
@@ -104,7 +108,7 @@
           <button id="generateBtn" class="btn primary" disabled>Find my times</button>
         </div>
 
-        <p id="statusText" class="status">Sign in first, then generate availability.</p>
+        <p id="statusText" class="status">Paste your calendar link above, then generate.</p>
       </section>
 
       <section class="card output" aria-label="Generated availability">
