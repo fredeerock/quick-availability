@@ -8,8 +8,8 @@ const el = {
   clearUrlBtn: document.getElementById("clearUrlBtn"),
   calBadge: document.getElementById("calBadge"),
   durationMin: document.getElementById("durationMin"),
-  startOffsetDays: document.getElementById("startOffsetDays"),
-  spanDays: document.getElementById("spanDays"),
+  startDate: document.getElementById("startDate"),
+  endDate: document.getElementById("endDate"),
   maxOptions: document.getElementById("maxOptions"),
   dayStart: document.getElementById("dayStart"),
   dayEnd: document.getElementById("dayEnd"),
@@ -32,7 +32,7 @@ function init() {
   el.copyBtn.addEventListener("click", onCopy);
 
   const settingInputs = [
-    el.durationMin, el.startOffsetDays, el.spanDays, el.maxOptions,
+    el.durationMin, el.startDate, el.endDate, el.maxOptions,
     el.dayStart, el.dayEnd, el.slotStep, el.leadHours, el.weekdaysOnly,
   ];
   for (const input of settingInputs) {
@@ -41,11 +41,15 @@ function init() {
 }
 
 function applySavedSettings() {
+  const today = new Date();
+  const inSevenDays = new Date(today);
+  inSevenDays.setDate(inSevenDays.getDate() + 7);
+
   const defaults = {
     icalUrl: "",
     durationMin: "60",
-    startOffsetDays: "0",
-    spanDays: "7",
+    startDate: toInputDate(today),
+    endDate: toInputDate(inSevenDays),
     maxOptions: "5",
     dayStart: "09:00",
     dayEnd: "17:00",
@@ -61,8 +65,8 @@ function applySavedSettings() {
   }
   el.icalUrl.value = saved.icalUrl ?? defaults.icalUrl;
   el.durationMin.value = String(saved.durationMin ?? defaults.durationMin);
-  el.startOffsetDays.value = String(saved.startOffsetDays ?? defaults.startOffsetDays);
-  el.spanDays.value = String(saved.spanDays ?? defaults.spanDays);
+  el.startDate.value = String(saved.startDate ?? defaults.startDate);
+  el.endDate.value = String(saved.endDate ?? defaults.endDate);
   el.maxOptions.value = String(saved.maxOptions ?? defaults.maxOptions);
   el.dayStart.value = saved.dayStart ?? defaults.dayStart;
   el.dayEnd.value = saved.dayEnd ?? defaults.dayEnd;
@@ -76,8 +80,8 @@ function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     icalUrl: el.icalUrl.value.trim(),
     durationMin: Number(el.durationMin.value),
-    startOffsetDays: Number(el.startOffsetDays.value),
-    spanDays: Number(el.spanDays.value),
+    startDate: el.startDate.value,
+    endDate: el.endDate.value,
     maxOptions: Number(el.maxOptions.value),
     dayStart: el.dayStart.value,
     dayEnd: el.dayEnd.value,
@@ -305,8 +309,8 @@ function buildIcalUrlCandidates(inputUrl) {
 function readSettings() {
   return {
     durationMin: Number(el.durationMin.value),
-    startOffsetDays: Number(el.startOffsetDays.value),
-    spanDays: Number(el.spanDays.value),
+    startDate: el.startDate.value,
+    endDate: el.endDate.value,
     maxOptions: Number(el.maxOptions.value),
     dayStart: el.dayStart.value,
     dayEnd: el.dayEnd.value,
@@ -320,11 +324,17 @@ function validateSettings(settings) {
   if (!Number.isFinite(settings.durationMin) || settings.durationMin < 5) {
     throw new Error("Meeting length must be at least 5 minutes.");
   }
-  if (!Number.isFinite(settings.spanDays) || settings.spanDays < 1) {
-    throw new Error("Look ahead must be at least 1 day.");
+  if (!settings.startDate || !settings.endDate) {
+    throw new Error("Select both start date and end date.");
   }
-  if (!Number.isFinite(settings.startOffsetDays) || settings.startOffsetDays < 0) {
-    throw new Error("Start in (days) must be 0 or more.");
+
+  const startDate = new Date(`${settings.startDate}T00:00:00`);
+  const endDate = new Date(`${settings.endDate}T00:00:00`);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    throw new Error("Invalid date selection.");
+  }
+  if (endDate < startDate) {
+    throw new Error("End date must be on or after start date.");
   }
   if (!Number.isFinite(settings.maxOptions) || settings.maxOptions < 1) {
     throw new Error("Number of options must be at least 1.");
@@ -341,11 +351,18 @@ function validateSettings(settings) {
 }
 
 function buildRange(settings) {
-  const start = new Date();
-  start.setDate(start.getDate() + settings.startOffsetDays);
-  const end = new Date(start);
-  end.setDate(end.getDate() + settings.spanDays);
+  const start = new Date(`${settings.startDate}T00:00:00`);
+  const end = new Date(`${settings.endDate}T00:00:00`);
+  // Make end exclusive so selected end date is fully included.
+  end.setDate(end.getDate() + 1);
   return { start, end };
+}
+
+function toInputDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 // ---------- iCal parser ----------
