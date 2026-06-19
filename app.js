@@ -18,7 +18,6 @@ const el = {
   generateBtn: document.getElementById("generateBtn"),
   statusText: document.getElementById("statusText"),
   resultText: document.getElementById("resultText"),
-  resultList: document.getElementById("resultList"),
   copyBtn: document.getElementById("copyBtn"),
 };
 
@@ -121,7 +120,6 @@ function updateStatus(text, mode = "") {
 
 async function onGenerate() {
   el.copyBtn.disabled = true;
-  el.resultList.innerHTML = "";
   el.resultText.value = "";
 
   try {
@@ -149,7 +147,6 @@ async function onGenerate() {
     const picks = chooseSpreadOptions(candidates, settings.maxOptions, start, end);
     const output = buildEmailOutput(picks, settings);
     el.resultText.value = output.text;
-    renderListPreview(output.lines);
     el.copyBtn.disabled = false;
     updateStatus(`Generated ${picks.length} options. Copy and paste into your email.`, "ok");
   } catch (error) {
@@ -416,15 +413,6 @@ function buildEmailOutput(slots, settings) {
 
   const intro = `Here are ${slots.length} options for a ${settings.durationMin}-minute meeting in the next ${settings.spanDays} day(s) (${timeZone}):`;
   return { lines, text: `${intro}\n\n${lines.join("\n")}` };
-}
-
-function renderListPreview(lines) {
-  el.resultList.innerHTML = "";
-  for (const line of lines) {
-    const li = document.createElement("li");
-    li.textContent = line;
-    el.resultList.appendChild(li);
-  }
 }
 
 async function onCopy() {
