@@ -20,6 +20,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE_DIR="$(mktemp -d /tmp/quickavailability-release.XXXXXX)"
 APP_PATH="$STAGE_DIR/$APP_NAME"
 ZIP_PATH="$ROOT_DIR/$ZIP_NAME"
+ENTITLEMENTS_PATH="$STAGE_DIR/entitlements.plist"
 
 cleanup() {
   rm -rf "$STAGE_DIR"
@@ -93,6 +94,19 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+cat > "$ENTITLEMENTS_PATH" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.personal-information.calendars</key>
+  <true/>
+  <key>com.apple.security.personal-information.reminders</key>
+  <true/>
+</dict>
+</plist>
+PLIST
+
 chmod +x "$APP_PATH/Contents/MacOS/$BIN_NAME"
 
 # Remove extended attributes that can break codesign sealing.
@@ -103,6 +117,7 @@ done
 
 echo "Signing with Developer ID..."
 codesign --force --deep --options runtime --timestamp \
+  --entitlements "$ENTITLEMENTS_PATH" \
   --sign "$DEV_ID" \
   "$APP_PATH"
 
